@@ -1,0 +1,78 @@
+/* Dark theme overrides for react-h5-audio-player */
+
+.rhap-dark-theme.rhap_container {
+  background-color: transparent;
+  box-shadow: none;
+  padding: 8px 16px 12px;
+}
+
+/* Play/pause button */
+.rhap-dark-theme .rhap_main-controls-button {
+  color: rgba(255,255,255,0.7);
+}
+.rhap-dark-theme .rhap_main-controls-button:hover {
+  color: #ffffff;
+}
+
+/* Play button size */
+.rhap-dark-theme .rhap_play-pause-button {
+  font-size: 32px;
+  width: 32px;
+  height: 32px;
+}
+
+/* Progress bar */
+.rhap-dark-theme .rhap_progress-bar {
+  background-color: rgba(255,255,255,0.1);
+  height: 4px;
+  border-radius: 2px;
+}
+
+.rhap-dark-theme .rhap_progress-filled {
+  background-color: rgba(255,255,255,0.6);
+  border-radius: 2px;
+}
+
+.rhap-dark-theme .rhap_progress-indicator {
+  background-color: #ffffff;
+  width: 12px;
+  height: 12px;
+  top: -4px;
+  box-shadow: none;
+}
+
+.rhap-dark-theme .rhap_download-progress {
+  background-color: rgba(255,255,255,0.15);
+  border-radius: 2px;
+}
+
+/* Time display */
+.rhap-dark-theme .rhap_time {
+  color: rgba(255,255,255,0.4);
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Remove volume and other controls we don't need */
+.rhap-dark-theme .rhap_volume-bar-area,
+.rhap-dark-theme .rhap_volume-button,
+.rhap-dark-theme .rhap_volume-container,
+.rhap-dark-theme .rhap_additional-controls,
+.rhap-dark-theme .rhap_repeat-button {
+  display: none;
+}
+
+/* Compact layout */
+.rhap-dark-theme .rhap_controls-section {
+  flex: unset;
+  margin-right: 8px;
+}
+
+.rhap-dark-theme .rhap_progress-section {
+  flex: 1;
+}
+
+/* SVG icon colors */
+.rhap-dark-theme svg {
+  color: rgba(255,255,255,0.7);
+}

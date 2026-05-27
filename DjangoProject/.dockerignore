@@ -1,0 +1,31 @@
+# Don't copy huge / sensitive / OS-specific stuff into the image.
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# Secrets & local config
+.env
+*.local
+
+# VCS / IDE
+.git/
+.gitignore
+.idea/
+.vscode/
+
+# Django local artifacts
+db.sqlite3
+*.sqlite3
+staticfiles/
+media/
+
+# Docs / scratch
+*.md
+!README.md
+
+# Sibling folders that aren't part of the runtime image.
+# (They're outside the build context anyway, but listing for clarity.)
