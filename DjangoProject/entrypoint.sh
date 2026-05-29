@@ -20,7 +20,7 @@ echo "[entrypoint] Applying migrations..."
 python manage.py migrate --noinput
 
 echo "[entrypoint] Seeding reference data (skips if already populated)..."
-python manage.py import_seed_data --if-empty
+python manage.py import_seed_data --if-empty --csv-dir "${MATERIALS_PREP_DIR:-/seed}"
 
 echo "[entrypoint] Collecting static files..."
 python manage.py collectstatic --noinput

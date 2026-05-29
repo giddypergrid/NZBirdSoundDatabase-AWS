@@ -17,6 +17,7 @@ Usage (inside container or local):
 """
 
 import csv
+import os
 from pathlib import Path
 
 from django.conf import settings
@@ -35,8 +36,8 @@ class Command(BaseCommand):
         parser.add_argument(
             "--csv-dir",
             default=None,
-            help="Folder containing the seed CSVs. Defaults to MaterialsPrep "
-                 "alongside the repo, or /seed from the EFS mount.",
+            help="Folder containing the seed CSVs. Defaults to MATERIALS_PREP_DIR, "
+                 "/seed, or MaterialsPrep alongside the repo.",
         )
         parser.add_argument(
             "--clear",
@@ -52,6 +53,8 @@ class Command(BaseCommand):
     def _resolve_csv_dir(self, override: str | None) -> Path:
         if override:
             p = Path(override)
+        elif os.environ.get("MATERIALS_PREP_DIR"):
+            p = Path(os.environ["MATERIALS_PREP_DIR"])
         elif Path("/seed").is_dir():
             # AWS: EFS mounts MaterialsPrep at /seed.
             p = Path("/seed")

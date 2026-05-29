@@ -24,13 +24,19 @@ Django REST backend for the NZ Bird Sound project. This repository is the AWS de
 - Secrets Manager stores production secrets.
 - CloudWatch receives container logs.
 
-## Required EFS Mounts
+## Required EFS Mount
 
 | Container path | Purpose |
 | --- | --- |
-| `/seed` | MaterialsPrep CSVs, audio, and images |
-| `/opt/BirdClassify` | Classifier model artifacts |
-| `/opt/birdTextTraining` | Semantic search assets |
+| `/mnt/artifacts` | EFS root mounted into the container |
+
+Expected EFS subfolders:
+
+| EFS path inside container | Purpose |
+| --- | --- |
+| `/mnt/artifacts/seed` | MaterialsPrep CSVs, audio, and images |
+| `/mnt/artifacts/BirdClassify` | Classifier model artifacts |
+| `/mnt/artifacts/birdTextTraining` | Semantic search assets |
 
 ## Required Environment
 
