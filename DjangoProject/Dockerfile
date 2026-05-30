@@ -38,6 +38,7 @@ COPY --from=builder /install /usr/local
 
 WORKDIR /app
 COPY --chown=app:app . /app
+RUN mkdir -p /app/staticfiles && chown -R app:app /app
 
 USER app
 
