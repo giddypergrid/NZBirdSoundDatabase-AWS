@@ -27,9 +27,10 @@ python manage.py collectstatic --noinput
 
 echo "[entrypoint] Starting gunicorn on 0.0.0.0:${PORT:-8000}"
 exec gunicorn DjangoProject.wsgi:application \
+    --config DjangoProject/gunicorn_conf.py \
     --bind "0.0.0.0:${PORT:-8000}" \
-    --workers "${GUNICORN_WORKERS:-3}" \
-    --threads "${GUNICORN_THREADS:-2}" \
+    --workers "${GUNICORN_WORKERS:-1}" \
+    --threads "${GUNICORN_THREADS:-4}" \
     --timeout "${GUNICORN_TIMEOUT:-30}" \
     --access-logfile - \
     --error-logfile -
