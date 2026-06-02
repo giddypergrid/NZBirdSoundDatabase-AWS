@@ -18,7 +18,7 @@ env:
   API_BASE_URL: http://nz-birdsound-alb-1901341595.ap-southeast-2.elb.amazonaws.com
 
 jobs:
-  build-deploy-test:
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -43,6 +43,17 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::912424953824:role/github-actions-ecr-nz-birdsound
+          aws-region: ${{ env.AWS_REGION }}
+
       - name: Deploy latest image to ECS
         run: |
           aws ecs update-service \
@@ -55,6 +66,14 @@ jobs:
           aws ecs wait services-stable \
             --cluster $ECS_CLUSTER \
             --services $ECS_SERVICE
+
+  live-tests:
+    runs-on: ubuntu-latest
+    needs: deploy
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up Python for live tests
         uses: actions/setup-python@v5
