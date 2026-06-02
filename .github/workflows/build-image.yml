@@ -3,6 +3,9 @@ name: Build, deploy, and test backend
 on:
   push:
     branches: ["main"]
+    paths:
+      - "DjangoProject/**"
+      - ".github/workflows/build-image.yml"
   workflow_dispatch:
 
 permissions:
