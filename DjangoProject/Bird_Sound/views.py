@@ -1,8 +1,7 @@
-﻿import logging
+import logging
 from mimetypes import guess_type
 from pathlib import Path
 
-import psutil
 from django.conf import settings
 from django.core.exceptions import RequestDataTooBig
 from django.db import connection
@@ -164,15 +163,6 @@ class ClassifyAudioView(APIView):
                 status=413,
             )
 
-        # Back-pressure: refuse ML work when RAM is tight.
-        available = psutil.virtual_memory().available
-        if available < settings.MIN_FREE_MEMORY_BYTES:
-            logger.warning("Classify rejected (low memory): %d MB available",
-                           available // (1024 * 1024))
-            resp = Response({"error": "Server busy. Try again shortly."}, status=503)
-            resp["Retry-After"] = "30"
-            return resp
-
         # Read body (Django will raise RequestDataTooBig above DATA_UPLOAD_MAX_MEMORY_SIZE).
         try:
             audio_bytes = request.body
@@ -259,8 +249,10 @@ class HealthCheckView(APIView):
             checks["db"] = f"error: {type(e).__name__}"
             ok = False
 
-        # Memory headroom -same threshold the classifier uses.
+        # Memory headroom -same threshold the traffic guard uses.
         try:
+            import psutil
+
             available = psutil.virtual_memory().available
             checks["memory_available_mb"] = available // (1024 * 1024)
             checks["memory_ok"] = available >= settings.MIN_FREE_MEMORY_BYTES

@@ -1,4 +1,4 @@
-﻿name: Build backend image
+name: Build, deploy, and test backend
 
 on:
   push:
@@ -13,9 +13,12 @@ env:
   AWS_REGION: ap-southeast-2
   ECR_REPOSITORY: nz-birdsound-backend
   ECR_REGISTRY: 912424953824.dkr.ecr.ap-southeast-2.amazonaws.com
+  ECS_CLUSTER: nz-birdsound-cluster
+  ECS_SERVICE: nz-birdsound-backend-service
+  API_BASE_URL: http://nz-birdsound-alb-1901341595.ap-southeast-2.elb.amazonaws.com
 
 jobs:
-  build:
+  build-deploy-test:
     runs-on: ubuntu-latest
 
     steps:
@@ -39,3 +42,29 @@ jobs:
           docker tag $ECR_REPOSITORY:${{ github.sha }} $ECR_REGISTRY/$ECR_REPOSITORY:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ github.sha }}
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+      - name: Deploy latest image to ECS
+        run: |
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_SERVICE \
+            --force-new-deployment
+
+      - name: Wait for ECS service to become stable
+        run: |
+          aws ecs wait services-stable \
+            --cluster $ECS_CLUSTER \
+            --services $ECS_SERVICE
+
+      - name: Set up Python for live tests
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install live test dependencies
+        run: python -m pip install -r requirements-test.txt
+
+      - name: Run live API integration tests
+        env:
+          API_BASE_URL: ${{ env.API_BASE_URL }}
+        run: python -m pytest tests/live -v

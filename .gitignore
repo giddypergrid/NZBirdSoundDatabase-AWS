@@ -1,2 +1,5 @@
 bird_sound_frontend/
 memory/
+__pycache__/
+*.py[cod]
+.pytest_cache/

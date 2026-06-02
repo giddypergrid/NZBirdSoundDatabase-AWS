@@ -1,4 +1,4 @@
-﻿import os
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -31,6 +31,15 @@ def env_list(key: str, default=None) -> list[str]:
     if not val:
         return list(default or [])
     return [item.strip() for item in val.split(",") if item.strip()]
+
+
+def env_path_limits(key: str, default=None) -> tuple[tuple[str, int], ...]:
+    raw_items = env_list(key, default=default)
+    limits = []
+    for item in raw_items:
+        path, limit = item.rsplit("=", 1)
+        limits.append((path.strip(), int(limit)))
+    return tuple(limits)
 
 
 DJANGO_ENV = (env("DJANGO_ENV", default="production") or "production").lower()
@@ -75,6 +84,7 @@ MIDDLEWARE = [
     # line -including DB errors and security middleware rejections -is
     # tagged with the same request_id.
     'Bird_Sound.middleware.RequestIDMiddleware',
+    'Bird_Sound.middleware.TrafficGuardMiddleware',
     'django.middleware.security.SecurityMiddleware',
     # WhiteNoise serves /static/ in prod (admin CSS, drf-spectacular UI).
     # Must be directly after SecurityMiddleware. No-op when DEBUG=True.
@@ -240,9 +250,24 @@ if not DEBUG:
 DATA_UPLOAD_MAX_MEMORY_SIZE = int(env("DATA_UPLOAD_MAX_MEMORY_SIZE", default=str(5 * 1024 * 1024)))
 MAX_CLASSIFY_AUDIO_BYTES    = int(env("MAX_CLASSIFY_AUDIO_BYTES",    default=str(5 * 1024 * 1024)))
 
-# Memory back-pressure: /classify/ returns 503+Retry-After when
-# psutil.virtual_memory().available drops below this.
-MIN_FREE_MEMORY_BYTES = int(env("MIN_FREE_MEMORY_BYTES", default=str(1 * 1024 * 1024 * 1024)))
+# Process-local back-pressure. This protects one ECS task; DRF throttles still
+# handle caller-level limits.
+MIN_FREE_MEMORY_BYTES = int(env("MIN_FREE_MEMORY_BYTES", default=str(256 * 1024 * 1024)))
+TRAFFIC_GUARD_ENABLED = env_bool("TRAFFIC_GUARD_ENABLED", default=not DEBUG)
+MAX_IN_FLIGHT_REQUESTS = int(env("MAX_IN_FLIGHT_REQUESTS", default="30"))
+TRAFFIC_GUARD_RETRY_AFTER_SECONDS = int(env("TRAFFIC_GUARD_RETRY_AFTER_SECONDS", default="5"))
+TRAFFIC_GUARD_PATH_LIMITS = env_path_limits(
+    "TRAFFIC_GUARD_PATH_LIMITS",
+    default=["/birds/api/classify/=1", "/birds/api/search-by-description/=2"],
+)
+TRAFFIC_GUARD_BYPASS_PATHS = tuple(env_list(
+    "TRAFFIC_GUARD_BYPASS_PATHS",
+    default=["/birds/api/healthz/"],
+))
+
+# Warm heavy singletons at worker startup, before the first real request.
+PRELOAD_SEMANTIC_SEARCH = env_bool("PRELOAD_SEMANTIC_SEARCH", default=not DEBUG)
+PRELOAD_CLASSIFIER = env_bool("PRELOAD_CLASSIFIER", default=not DEBUG)
 
 # Scoped throttles: set throttle_scope='classify'/'search' on hot views.
 # Throttles use the default cache (LocMem). Swap to Redis in prod.
@@ -275,4 +300,3 @@ AUDIO_FILES_ROOT = key_files.audio_files_root
 IMAGE_FILES_ROOT = key_files.image_files_root
 CLASSIFIER_MODEL_PATH = key_files.classifier_model_path
 CLASSIFIER_ARTIFACTS_PATH = key_files.classifier_artifacts_path
-
