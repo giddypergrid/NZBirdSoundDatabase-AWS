@@ -249,6 +249,7 @@ if not DEBUG:
 # DATA_UPLOAD_MAX_MEMORY_SIZE is the hard cap on request.body.
 DATA_UPLOAD_MAX_MEMORY_SIZE = int(env("DATA_UPLOAD_MAX_MEMORY_SIZE", default=str(5 * 1024 * 1024)))
 MAX_CLASSIFY_AUDIO_BYTES    = int(env("MAX_CLASSIFY_AUDIO_BYTES",    default=str(5 * 1024 * 1024)))
+BIRD_LIST_MAX_QUANTITY = int(env("BIRD_LIST_MAX_QUANTITY", default="100"))
 
 # Process-local back-pressure. This protects one ECS task; DRF throttles still
 # handle caller-level limits.
