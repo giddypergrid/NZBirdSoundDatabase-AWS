@@ -1,5 +1,13 @@
+import re
+
+from django.conf import settings
 from rest_framework import serializers
 from .models import BirdSound, Bird
+
+_SEARCH_ABUSE_RE = re.compile(
+    r"(--|/\*|\*/|<\s*script|\bor\s+\d+\s*=\s*\d+|\b(drop|select|insert|delete|update)\b)",
+    re.IGNORECASE,
+)
 
 
 class BirdSoundFilenameSerializer(serializers.ModelSerializer):
@@ -22,8 +30,18 @@ class BirdSerializer(serializers.ModelSerializer):
 
 class BirdListFilterSerializer(serializers.Serializer):
     random = serializers.BooleanField(required=False, allow_null=True, default=False)
-    #quantity = -1, cancel pagination and dump all
     quantity = serializers.IntegerField(required=False, allow_null=True, default=3)
+
+    def validate_quantity(self, value):
+        if value is None or value == -1:
+            return value
+        if value < 1:
+            raise serializers.ValidationError("quantity must be -1 or a positive integer.")
+        if value > settings.BIRD_LIST_MAX_QUANTITY:
+            raise serializers.ValidationError(
+                f"quantity must be <= {settings.BIRD_LIST_MAX_QUANTITY}."
+            )
+        return value
 
 
 class BirdSoundFilterSerializer(serializers.Serializer):
@@ -56,6 +74,14 @@ class SearchByDescriptionQuerySerializer(serializers.Serializer):
                                        help_text="Strong-match threshold. Hits above this are flagged strong_match=true.")
     top_k = serializers.IntegerField(required=False, default=4, min_value=1, max_value=50,
                                      help_text="Number of birds to return (always this many if available).")
+
+    def validate_query(self, value):
+        cleaned = value.strip()
+        if not cleaned:
+            raise serializers.ValidationError("query cannot be empty.")
+        if _SEARCH_ABUSE_RE.search(cleaned):
+            raise serializers.ValidationError("query contains unsupported control syntax.")
+        return cleaned
 
 
 class SearchByDescriptionHitSerializer(serializers.Serializer):
