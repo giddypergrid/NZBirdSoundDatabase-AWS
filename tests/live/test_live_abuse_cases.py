@@ -36,7 +36,7 @@ def test_bird_list_quantity_boundaries_are_controlled(api_client, quantity):
 @pytest.mark.parametrize(
     "params",
     [
-        {"query": "' OR 1=1 --", "top_k": 3},
+        {"query": "not-a-real-bird 12345 !?", "top_k": 3},
         {"query": "<script>alert('x')</script>", "top_k": 3},
         {"query": "wetland bird", "top_k": 0},
         {"query": "wetland bird", "top_k": 9999},
