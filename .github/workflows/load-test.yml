@@ -1,0 +1,22 @@
+name: Manual k6 load test
+
+on:
+  workflow_dispatch:
+
+env:
+  API_BASE_URL: http://nz-birdsound-alb-1901341595.ap-southeast-2.elb.amazonaws.com
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Run live k6 load test
+        run: k6 run load/k6-live-smoke.js
