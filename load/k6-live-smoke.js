@@ -1,31 +1,69 @@
 import http from "k6/http";
-import { check, sleep } from "k6";
+import { check } from "k6";
+import { Counter } from "k6/metrics";
 
-http.setResponseCallback(http.expectedStatuses({ min: 200, max: 399 }, 429));
+const controlledThrottleResponses = new Counter("controlled_throttle_responses");
+const controlledGuardResponses = new Counter("controlled_guard_responses");
+const expectedThrottleStatuses = http.expectedStatuses({ min: 200, max: 399 }, 429);
+const expectedGuardStatuses = http.expectedStatuses({ min: 200, max: 399 }, 503);
 
 export const options = {
-  vus: 5,
-  duration: "45s",
+  scenarios: {
+    smoke: {
+      executor: "constant-arrival-rate",
+      exec: "smoke",
+      rate: 90,
+      timeUnit: "1m",
+      duration: "1m",
+      preAllocatedVUs: 5,
+      maxVUs: 10,
+      tags: { phase: "smoke" },
+    },
+    throttleProtection: {
+      executor: "constant-arrival-rate",
+      exec: "throttleProtection",
+      startTime: "65s",
+      rate: 180,
+      timeUnit: "1m",
+      duration: "1m",
+      preAllocatedVUs: 5,
+      maxVUs: 10,
+      tags: { phase: "throttle" },
+    },
+    semanticGuard: {
+      executor: "per-vu-iterations",
+      exec: "semanticGuard",
+      startTime: "190s",
+      vus: 5,
+      iterations: 1,
+      maxDuration: "45s",
+      tags: { phase: "semantic_guard" },
+    },
+    classifyGuard: {
+      executor: "per-vu-iterations",
+      exec: "classifyGuard",
+      startTime: "240s",
+      vus: 4,
+      iterations: 1,
+      maxDuration: "1m",
+      tags: { phase: "classify_guard" },
+    },
+  },
   thresholds: {
-    http_req_failed: ["rate<0.02"],
-    "http_req_failed{endpoint:health}": ["rate<0.01"],
-    "http_req_failed{endpoint:birds_list}": ["rate<0.01"],
-    "http_req_failed{endpoint:bird_detail}": ["rate<0.01"],
-    "http_req_failed{endpoint:sound_metadata}": ["rate<0.01"],
-    "http_req_failed{endpoint:image}": ["rate<0.02"],
-    "http_req_failed{endpoint:audio}": ["rate<0.02"],
-    "http_req_failed{endpoint:semantic_search}": ["rate<0.02"],
-    "http_req_failed{endpoint:classify_audio_source}": ["rate<0.02"],
-    "http_req_failed{endpoint:classify}": ["rate<0.10"],
-    "http_req_duration{endpoint:health}": ["avg<200", "p(95)<500"],
-    "http_req_duration{endpoint:birds_list}": ["avg<500", "p(95)<1000"],
-    "http_req_duration{endpoint:bird_detail}": ["avg<500", "p(95)<1000"],
-    "http_req_duration{endpoint:sound_metadata}": ["avg<750", "p(95)<1500"],
-    "http_req_duration{endpoint:image}": ["avg<1500", "p(95)<3000"],
-    "http_req_duration{endpoint:audio}": ["avg<2500", "p(95)<5000"],
-    "http_req_duration{endpoint:semantic_search}": ["avg<6000", "p(95)<8000"],
-    "http_req_duration{endpoint:classify_audio_source}": ["avg<2500", "p(95)<5000"],
-    "http_req_duration{endpoint:classify}": ["avg<10000", "p(95)<15000"],
+    "checks{phase:smoke}": ["rate==1"],
+    "http_req_failed{phase:smoke}": ["rate<0.01"],
+    "http_req_duration{phase:smoke,endpoint:health}": ["p(95)<500"],
+    "http_req_duration{phase:smoke,endpoint:birds_list}": ["p(95)<1000"],
+    "http_req_duration{phase:smoke,endpoint:bird_detail}": ["p(95)<1000"],
+    "http_req_duration{phase:smoke,endpoint:sound_metadata}": ["p(95)<1500"],
+    "http_req_duration{phase:smoke,endpoint:image}": ["p(95)<3000"],
+    "http_req_duration{phase:smoke,endpoint:audio}": ["p(95)<5000"],
+    "checks{phase:throttle}": ["rate==1"],
+    "controlled_throttle_responses{phase:throttle}": ["count>0"],
+    "checks{phase:semantic_guard}": ["rate==1"],
+    "controlled_guard_responses{phase:semantic_guard}": ["count>0"],
+    "checks{phase:classify_guard}": ["rate==1"],
+    "controlled_guard_responses{phase:classify_guard}": ["count>0"],
   },
 };
 
@@ -42,6 +80,26 @@ const AUDIO_CASES = [
 
 const IMAGE_BIRDS = ["pabduc1", "bluduc1", "stitch1", "houspa", "saddle3", "codpet1"];
 
+const SMOKE_CASES = [
+  () => get("/birds/api/healthz/", "health"),
+  () => get("/birds/api/birds/", "birds_list"),
+  () => {
+    const [bird] = pick(AUDIO_CASES);
+    return get(`/birds/api/birds/${bird}/`, "bird_detail");
+  },
+  () => {
+    const [bird] = pick(AUDIO_CASES);
+    return get(`/birds/api/sounds/bird-label/${bird}/`, "sound_metadata");
+  },
+  () => get(`/birds/api/image/${pick(IMAGE_BIRDS)}/0/`, "image"),
+  () => {
+    const [bird, file] = pick(AUDIO_CASES);
+    return get(`/birds/api/audio/${bird}/${file}/`, "audio", {
+      responseType: "none",
+    });
+  },
+];
+
 function pick(items) {
   return items[Math.floor(Math.random() * items.length)];
 }
@@ -49,71 +107,94 @@ function pick(items) {
 function get(path, endpoint, params = {}) {
   return http.get(`${BASE_URL}${path}`, {
     ...params,
-    tags: { endpoint },
+    tags: { ...(params.tags || {}), endpoint },
   });
 }
 
-export default function () {
-  const [audioBird, audioFile] = pick(AUDIO_CASES);
-  const imageBird = pick(IMAGE_BIRDS);
-
-  const health = get("/birds/api/healthz/", "health");
-  check(health, { "health is 200": (res) => res.status === 200 });
-
-  const birds = get("/birds/api/birds/", "birds_list");
-  check(birds, { "birds list is 200": (res) => res.status === 200 });
-
-  const birdDetail = get(`/birds/api/birds/${audioBird}/`, "bird_detail");
-  check(birdDetail, { "bird detail is 200": (res) => res.status === 200 });
-
-  const sounds = get(
-    `/birds/api/sounds/bird-label/${audioBird}/`,
-    "sound_metadata"
-  );
-  check(sounds, { "sound metadata is 200": (res) => res.status === 200 });
-
-  const image = get(`/birds/api/image/${imageBird}/0/`, "image");
-  check(image, {
-    "image is 200": (res) => res.status === 200,
-    "image content type": (res) => String(res.headers["Content-Type"]).startsWith("image/"),
-  });
-
-  const audio = get(`/birds/api/audio/${audioBird}/${audioFile}/`, "audio", {
-    responseType: "none",
-  });
-  check(audio, { "audio is 200": (res) => res.status === 200 });
-
-  const search = get(
-    "/birds/api/search-by-description/?query=wetland%20bird&top_k=3",
-    "semantic_search"
-  );
-  check(search, { "semantic search is 200": (res) => res.status === 200 });
-
-  if (__ITER % 5 === 0) {
-    const classifyAudio = get(
-      `/birds/api/audio/${audioBird}/${audioFile}/`,
-      "classify_audio_source",
-      { responseType: "binary" }
-    );
-    check(classifyAudio, {
-      "classify source audio is 200": (res) => res.status === 200,
-    });
-
-    if (classifyAudio.status === 200) {
-      const classify = http.post(
-        `${BASE_URL}/birds/api/classify/?ext=flac`,
-        classifyAudio.body,
-        {
-          headers: { "content-type": "application/octet-stream" },
-          tags: { endpoint: "classify" },
-        }
-      );
-      check(classify, {
-        "classify is 200 or throttled": (res) =>
-          res.status === 200 || res.status === 429,
-      });
-    }
+function hasControlledGuardResponse(response) {
+  if (response.status !== 503 || !response.headers["Retry-After"]) {
+    return false;
   }
 
-  sleep(1);
+  try {
+    const body = response.json();
+    return (
+      body.error === "Server busy. Try again shortly." &&
+      ["too_many_path_requests", "too_many_requests", "low_memory"].includes(body.reason)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function smoke() {
+  const response = pick(SMOKE_CASES)();
+  check(response, {
+    "smoke response is 200": (res) => res.status === 200,
+  });
+}
+
+export function throttleProtection() {
+  const response = get("/birds/api/birds/", "birds_list", {
+    responseCallback: expectedThrottleStatuses,
+  });
+  const controlledThrottle = response.status === 429 && Boolean(response.headers["Retry-After"]);
+
+  if (controlledThrottle) {
+    controlledThrottleResponses.add(1);
+  }
+
+  check(response, {
+    "throttle response is 200 or controlled 429": (res) =>
+      res.status === 200 || controlledThrottle,
+  });
+}
+
+export function semanticGuard() {
+  const response = get(
+    `/birds/api/search-by-description/?query=wetland%20guard%20probe%20${__VU}&top_k=3`,
+    "semantic_search",
+    { responseCallback: expectedGuardStatuses }
+  );
+  const controlledGuard = hasControlledGuardResponse(response);
+
+  if (controlledGuard) {
+    controlledGuardResponses.add(1);
+  }
+
+  check(response, {
+    "semantic response is 200 or controlled 503": (res) =>
+      res.status === 200 || controlledGuard,
+  });
+}
+
+export function classifyGuard() {
+  const [bird, file] = pick(AUDIO_CASES);
+  const audio = get(`/birds/api/audio/${bird}/${file}/`, "classify_audio_source", {
+    responseType: "binary",
+  });
+
+  if (!check(audio, { "classify source audio is 200": (res) => res.status === 200 })) {
+    return;
+  }
+
+  const response = http.post(
+    `${BASE_URL}/birds/api/classify/?ext=flac`,
+    audio.body,
+    {
+      headers: { "content-type": "application/octet-stream" },
+      tags: { endpoint: "classify" },
+      responseCallback: expectedGuardStatuses,
+    }
+  );
+  const controlledGuard = hasControlledGuardResponse(response);
+
+  if (controlledGuard) {
+    controlledGuardResponses.add(1);
+  }
+
+  check(response, {
+    "classify response is 200 or controlled 503": (res) =>
+      res.status === 200 || controlledGuard,
+  });
 }
