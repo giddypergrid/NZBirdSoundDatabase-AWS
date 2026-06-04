@@ -1,0 +1,120 @@
+{
+  "containerDefinitions": [
+    {
+      "name": "backend",
+      "image": "912424953824.dkr.ecr.ap-southeast-2.amazonaws.com/nz-birdsound-backend:latest",
+      "cpu": 0,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "hostPort": 8000,
+          "protocol": "tcp",
+          "name": "backend-8000-tcp",
+          "appProtocol": "http"
+        }
+      ],
+      "essential": true,
+      "environment": [
+        {
+          "name": "LOG_FORMAT",
+          "value": "json"
+        },
+        {
+          "name": "MATERIALS_PREP_DIR",
+          "value": "/mnt/artifacts/seed"
+        },
+        {
+          "name": "BIRD_CLASSIFY_DIR",
+          "value": "/mnt/artifacts/BirdClassify"
+        },
+        {
+          "name": "DJANGO_ENV",
+          "value": "production"
+        },
+        {
+          "name": "DJANGO_ALLOWED_HOSTS",
+          "value": "*"
+        },
+        {
+          "name": "DB_PORT",
+          "value": "5432"
+        },
+        {
+          "name": "DB_USER",
+          "value": "birduser"
+        },
+        {
+          "name": "DB_NAME",
+          "value": "postgres"
+        },
+        {
+          "name": "BIRD_TEXT_TRAINING_DIR",
+          "value": "/mnt/artifacts/birdTextTraining"
+        },
+        {
+          "name": "DB_HOST",
+          "value": "nz-birdsound-db.cpuisckg2hg3.ap-southeast-2.rds.amazonaws.com"
+        },
+        {
+          "name": "LOG_LEVEL",
+          "value": "INFO"
+        }
+      ],
+      "environmentFiles": [],
+      "mountPoints": [
+        {
+          "sourceVolume": "birdsound-artifacts",
+          "containerPath": "/mnt/artifacts",
+          "readOnly": false
+        }
+      ],
+      "volumesFrom": [],
+      "secrets": [
+        {
+          "name": "DB_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:912424953824:secret:nz-birdsound/db-password-WKTMBL:DB_PASSWORD::"
+        },
+        {
+          "name": "DJANGO_SECRET_KEY",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:912424953824:secret:nz-birdsound/django-secret-key-TH01rx:DJANGO_SECRET_KEY::"
+        }
+      ],
+      "ulimits": [],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/nz-birdsound-backend",
+          "awslogs-create-group": "true",
+          "awslogs-region": "ap-southeast-2",
+          "awslogs-stream-prefix": "ecs"
+        },
+        "secretOptions": []
+      },
+      "systemControls": []
+    }
+  ],
+  "family": "nz-birdsound-backend",
+  "executionRoleArn": "arn:aws:iam::912424953824:role/ecsTaskExecutionRole",
+  "networkMode": "awsvpc",
+  "volumes": [
+    {
+      "name": "birdsound-artifacts",
+      "efsVolumeConfiguration": {
+        "fileSystemId": "fs-076a35ce18a7ec4d6",
+        "rootDirectory": "/",
+        "transitEncryption": "ENABLED"
+      }
+    }
+  ],
+  "placementConstraints": [],
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "1024",
+  "memory": "4096",
+  "enableFaultInjection": false
+}
