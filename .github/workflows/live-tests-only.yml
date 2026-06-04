@@ -1,13 +1,6 @@
 name: Live API tests only
 
 on:
-  push:
-    branches: ["main"]
-    paths:
-      - "tests/**"
-      - "pytest.ini"
-      - "requirements-test.txt"
-      - ".github/workflows/live-tests-only.yml"
   workflow_dispatch:
 
 env:
