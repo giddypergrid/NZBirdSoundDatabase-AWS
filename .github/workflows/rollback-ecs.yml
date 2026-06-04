@@ -1,0 +1,52 @@
+name: Rollback ECS deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: "Working ECS task-definition revision, for example: 7"
+        required: true
+        type: number
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-2
+  ECS_CLUSTER: nz-birdsound-cluster
+  ECS_SERVICE: nz-birdsound-backend-service
+  TASK_DEFINITION_FAMILY: nz-birdsound-backend
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::912424953824:role/github-actions-ecr-nz-birdsound
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify selected revision is active
+        run: |
+          STATUS=$(aws ecs describe-task-definition \
+            --task-definition "$TASK_DEFINITION_FAMILY:${{ inputs.revision }}" \
+            --query "taskDefinition.status" \
+            --output text)
+
+          test "$STATUS" = "ACTIVE"
+
+      - name: Deploy selected revision
+        run: |
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --task-definition "$TASK_DEFINITION_FAMILY:${{ inputs.revision }}"
+
+      - name: Wait for rollback to become stable
+        run: |
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE"
