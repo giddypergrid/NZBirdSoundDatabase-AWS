@@ -1,36 +1,90 @@
-# NZ Bird Sound Database: AWS Backend Deployment
+# NZ Bird Sound Database, on AWS
 
-This repository is the AWS-ready version of the NZ Bird Sound Django backend. The original app worked as a normal backend; this version focuses on making it deployable, observable, testable, and safer to run as a public service.
+**Live at [nzbirddatabase.com](https://nzbirddatabase.com)** · API at `api.nzbirddatabase.com`
 
-Original application repository: [giddypergrid/NZBirdSoundDatabase](https://github.com/giddypergrid/NZBirdSoundDatabase-Backend)
+Upload a recording of a bird and a model tells you which of 138 New Zealand species is singing. Or
+describe a bird in your own words and it ranks the closest matches by meaning.
 
-Main additions in this version:
+This repository is the deployed version. The application itself started as an ordinary Django
+backend; the work here is everything that had to change to run it as a public service that strangers
+can hit.
 
-- Docker image build and deployment through GitHub Actions.
-- ECS Fargate runtime behind an Application Load Balancer.
-- RDS PostgreSQL instead of a database living on the app server.
-- EFS-mounted bird data, classifier files, and semantic-search artifacts.
-- Secrets Manager for database password and Django secret key.
-- CloudWatch logs and an unhealthy-target alarm.
-- Live pytest coverage, k6 load testing, and a manual rollback workflow.
-- Backend request guards for heavier ML endpoints, so the service returns controlled `503` responses instead of silently overloading.
-
-Runtime request flow:
-
-```mermaid
-flowchart LR
-    User[User request] --> ALB[Application Load Balancer]
-    ALB --> ECS[ECS Fargate task]
-    ECS --> Django[Django backend]
-    Django --> RDS[(RDS PostgreSQL)]
-    Django --> EFS[(EFS artifacts)]
-    Django --> Secrets[Secrets Manager]
-    Django --> Logs[CloudWatch logs]
-    Django --> ALB
-    ALB --> User
+```
+🐦 138 species        🎧 44.34 GiB of audio, images and model files on EFS
+✅ 33/33 live tests    ⚡ p95 121 ms health · 290 ms audio · 565 ms image
 ```
 
-The most useful part of this work was not just getting the container online. A few production-style issues came up and were fixed along the way: Linux entrypoint formatting, RDS/EFS security group wiring, Django `ALLOWED_HOSTS`, static file ownership inside the container, missing mounted artifact paths, slow ML warmup, and controlled back-pressure for expensive endpoints.
+## How a sound becomes a bird name
+
+```
+   .wav / .mp3 upload
+          │
+          ▼
+   trim + resample to 48 kHz, cut into 3-second windows
+          │
+          ▼
+   BirdNET (TFLite)  ──►  1024-dimension embedding per window
+          │
+          ▼
+   LightGBM ensemble, trained with AutoGluon  ──►  probabilities over 67 eBird codes
+          │
+          ▼
+   top match + confidence
+```
+
+BirdNET is pretrained and frozen, so the training problem shrinks to a classifier over 1024 numbers
+instead of a model over raw audio. AutoGluon benchmarked LightGBM, XGBoost, CatBoost, random forest
+and a neural net, then stacked a weighted ensemble; LightGBM dominated it.
+
+Plain-language search is a separate path. Species descriptions are embedded once with a
+Sentence-Transformer, and a query is ranked against them by cosine similarity, so "small green
+parrot that screeches at night" finds the kākāpō without the word ever appearing.
+
+## The three problems worth reading about
+
+**A 40GB image is not a deployable image.** The bird audio, reference photos, classifier weights and
+search vectors live on EFS mounted at `/mnt/artifacts`, so the Docker image carries code only. An
+early deploy failed because the container expected local project folders that did not exist in AWS.
+Moving them onto EFS made every runtime path explicit.
+
+**Machine learning endpoints will happily take the service down.** Classification loads a model and
+burns memory, so a handful of concurrent requests can exhaust the task. Middleware counts in-flight
+requests on the heavy routes and sheds load with a controlled `503` once the limit is reached, which
+keeps the rest of the API answering. Two tests exist purely to prove the `503` actually fires: five
+concurrent semantic searches and four concurrent classifications must each produce at least one.
+
+**Tests run against the public URL, not a local mock.** That is what made them useful. They caught
+security group wiring, missing EFS paths, wrong environment variables, `ALLOWED_HOSTS` rejections,
+static file ownership inside the container and failed health checks, none of which a local test
+suite can see.
+
+## Where to look
+
+| File | Why |
+|---|---|
+| [`DjangoProject/Bird_Sound/classifier.py`](DjangoProject/Bird_Sound/classifier.py) | The audio pipeline: windowing, BirdNET embedding, the AutoGluon predictor. Loaded once as a singleton. |
+| [`DjangoProject/Bird_Sound/middleware.py`](DjangoProject/Bird_Sound/middleware.py) | Load shedding on the heavy routes |
+| [`DjangoProject/Bird_Sound/warmup.py`](DjangoProject/Bird_Sound/warmup.py) | Warms the model at startup so the first real user does not pay for it |
+| [`DjangoProject/Bird_Sound/key_files.py`](DjangoProject/Bird_Sound/key_files.py) | Every EFS path in one place |
+| [`tests/live/test_live_traffic_guard.py`](tests/live/test_live_traffic_guard.py) | Proves the `503` back-pressure fires under real concurrency |
+| [`.github/workflows/build-image.yml`](.github/workflows/build-image.yml) | Build, push to ECR, deploy to ECS, then run the live tests |
+
+## The rest of the project
+
+| Repository | What it holds |
+|---|---|
+| [NZBirdSoundDatabase-Backend](https://github.com/giddypergrid/NZBirdSoundDatabase-Backend) | The original Django REST application |
+| [NZBirdSoundDatabase-Frontend](https://github.com/giddypergrid/NZBirdSoundDatabase-Frontend) | The React client |
+| [NZBirdSoundDatabase-Prep](https://github.com/giddypergrid/NZBirdSoundDatabase-Prep) | Data preparation and model training |
+
+---
+
+Django REST Framework, PostgreSQL on RDS, Docker, ECS Fargate behind an Application Load Balancer,
+EFS, ECR, Secrets Manager, CloudWatch. GitHub Actions for build, deploy, live tests, k6 load tests
+and rollback. React and TypeScript on the client.
+
+Everything below is the deployment write-up: each workflow, the AWS resources with evidence, and the
+full test matrix with its latest results.
 
 ## 1. CI/CD Pipeline
 
@@ -140,7 +194,7 @@ Key setup:
 | Safety check | Selected revision must be `ACTIVE`. |
 | Action | Existing ECS service is updated to the selected revision. |
 
-Rollback is manual on purpose. It lets me choose a known-good ECS task revision and redeploy it without rebuilding the Docker image.
+Rollback is manual on purpose. It redeploys a known-good ECS task revision straight from ECR, so recovery takes one workflow run instead of a full image build.
 
 Screenshot evidence:
 
